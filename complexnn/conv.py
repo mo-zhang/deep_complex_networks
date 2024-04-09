@@ -23,14 +23,27 @@ from .norm import LayerNormalization, ComplexLayerNorm
 
 
 def sanitizedInitGet(init):
+	"""
+ 	根据输入的初始化器名称返回对应的初始化器函数。如果输入的名称是预定义的几种情况之一，则直接返回相应的函数或名称；
+  	否则，通过initializers.get(init)获取对应的初始化器函数。
+ 	"""
+	# 如果输入的初始化器名称是 "sqrt_init"，返回 sqrt_init 函数
 	if   init in ["sqrt_init"]:
 		return sqrt_init
+	# 如果输入的初始化器名称是以下任意一个，直接返回该名称
 	elif init in ["complex", "complex_independent",
 	              "glorot_complex", "he_complex"]:
 		return init
+	# 如果输入的初始化器名称不属于以上任何一种，通过 initializers.get(init) 获取对应的初始化器函数
 	else:
 		return initializers.get(init)
+
+
 def sanitizedInitSer(init):
+	"""
+	这个函数的作用是根据输入的初始化器函数，返回相应的字符串表示。如果输入的初始化器函数是预定义的几种情况之一，则直接返回相应的字符串；
+ 	否则，通过initializers.serialize(init)将输入的初始化器函数序列化为字符串并返回。
+ 	"""
 	if init in [sqrt_init]:
 		return "sqrt_init"
 	elif init == "complex" or isinstance(init, ComplexInit):
@@ -43,27 +56,38 @@ def sanitizedInitSer(init):
 
 
 class ComplexConv(Layer):
-    """Abstract nD complex convolution layer.
-    This layer creates a complex convolution kernel that is convolved
-    with the layer input to produce a tensor of outputs.
-    If `use_bias` is True, a bias vector is created and added to the outputs.
-    Finally, if `activation` is not `None`,
-    it is applied to the outputs as well.
+    """
+    这是一个 nD 复数卷积层的抽象类。
+    此层创建一个复数卷积核，将其与层输入进行卷积，产生输出张量。
+    如果 `use_bias` 为 True，则创建一个偏置向量并添加到输出中。
+    最后，如果 `activation` 不是 `None`，则也应用于输出。
     # Arguments
+    # 参数
         rank: An integer, the rank of the convolution,
             e.g. "2" for 2D convolution.
+        rank: 一个整数，卷积的秩，
+            例如，"2" 表示二维卷积。
         filters: Integer, the dimensionality of the output space, i.e,
             the number of complex feature maps. It is also the effective number
             of feature maps for each of the real and imaginary parts.
             (i.e. the number of complex filters in the convolution)
-            The total effective number of filters is 2 x filters.
+        filters: 整数，输出空间的维度，即
+            复数特征映射的数量。 它也是每个实部和虚部的特征映射的有效数量。
+            （即卷积中的复数滤波器数量）
         kernel_size: An integer or tuple/list of n integers, specifying the
             dimensions of the convolution window.
+        kernel_size: 一个整数或包含 n 个整数的元组/列表，指定
+            卷积窗口的维度。
         strides: An integer or tuple/list of n integers,
-            spfying the strides of the convolution.
+            specifying the strides of the convolution.
             Specifying any stride value != 1 is incompatible with specifying
             any `dilation_rate` value != 1.
+        strides: 一个整数或包含 n 个整数的元组/列表，
+            指定卷积的步幅。
+            指定任何不等于 1 的步幅值与指定
+            任何不等于 1 的 `dilation_rate` 值不兼容。
         padding: One of `"valid"` or `"same"` (case-insensitive).
+        padding: `"valid"` 或 `"same"` 中的一个（不区分大小写）。
         data_format: A string,
             one of `channels_last` (default) or `channels_first`.
             The ordering of the dimensions in the inputs.
@@ -73,15 +97,31 @@ class ComplexConv(Layer):
             It defaults to the `image_data_format` value found in your
             Keras config file at `~/.keras/keras.json`.
             If you never set it, then it will be "channels_last".
+        data_format: 一个字符串，
+            其中之一为 `channels_last`（默认值）或 `channels_first`。
+            输入中维度的排序。
+            `channels_last` 对应于形状为
+            `(batch, ..., channels)` 的输入，而 `channels_first` 对应于
+            形状为 `(batch, channels, ...)` 的输入。
+            默认值为您在 `~/.keras/keras.json` 中找到的 `image_data_format` 值。
+            如果从未设置过，则为 "channels_last"。
         dilation_rate: An integer or tuple/list of n integers, specifying
             the dilation rate to use for dilated convolution.
             Currently, specifying any `dilation_rate` value != 1 is
             incompatible with specifying any `strides` value != 1.
+        dilation_rate: 一个整数或包含 n 个整数的元组/列表，指定
+            用于膨胀卷积的膨胀率。
+            目前，指定任何不等于 1 的 `dilation_rate` 值与指定任何不等于 1 的 `strides` 值不兼容。
         activation: Activation function to use
             (see keras.activations).
             If you don't specify anything, no activation is applied
-            (ie. "linear" activation: `a(x) = x`).
+            (i.e. "linear" activation: `a(x) = x`).
+        activation: 要使用的激活函数
+            (参见 keras.activations)。
+            如果没有指定任何内容，则不应用激活函数
+            （即“线性”激活：`a(x) = x`）。
         use_bias: Boolean, whether the layer uses a bias vector.
+        use_bias: 布尔值，该层是否使用偏置向量。
         normalize_weight: Boolean, whether the layer normalizes its complex
             weights before convolving the complex input.
             The complex normalization performed is similar to the one
@@ -89,30 +129,51 @@ class ComplexConv(Layer):
             the inverse square root of covariance matrix.
             Then, a complex multiplication is perfromed as the normalized weights are
             multiplied by the complex scaling factor gamma.
+        normalize_weight: 布尔值，该层是否在卷积复数输入之前对其复数权重进行归一化。
+            执行的复数归一化与批量归一化类似。 每个复数核都是居中的并且乘以
+            协方差矩阵的倒数平方根。
+            然后，由于归一化的权重与复数缩放因子 gamma 相乘，因此执行了复数乘法。
         kernel_initializer: Initializer for the complex `kernel` weights matrix.
-            By default it is 'complex'. The 'complex_independent' 
+            By default it is 'complex'. The 'complex_independent'
             and the usual initializers could also be used.
             (see keras.initializers and init.py).
+        kernel_initializer: 复数 `kernel` 权重矩阵的初始化器。
+            默认情况下为 'complex'。 也可以使用 'complex_independent'
+            和通常的初始化器。
+            (参见 keras.initializers 和 init.py)。
         bias_initializer: Initializer for the bias vector
             (see keras.initializers).
+        bias_initializer: 偏置向量的初始化器
+            (参见 keras.initializers)。
         kernel_regularizer: Regularizer function applied to
             the `kernel` weights matrix
             (see keras.regularizers).
+        kernel_regularizer: 应用于 `kernel` 权重矩阵的正则化函数
+            (参见 keras.regularizers)。
         bias_regularizer: Regularizer function applied to the bias vector
             (see keras.regularizers).
+        bias_regularizer: 应用于偏置向量的正则化函数
+            (参见 keras.regularizers)。
         activity_regularizer: Regularizer function applied to
             the output of the layer (its "activation").
             (see keras.regularizers).
+        activity_regularizer: 应用于该层输出（其“激活”）的正则化函数
+            (参见 keras.regularizers)。
         kernel_constraint: Constraint function applied to the kernel matrix
             (see keras.constraints).
+        kernel_constraint: 应用于内核矩阵的约束函数
+            (参见 keras.constraints)。
         bias_constraint: Constraint function applied to the bias vector
             (see keras.constraints).
+        bias_constraint: 应用于偏置向量的约束函数
+            (参见 keras.constraints)。
         spectral_parametrization: Whether or not to use a spectral
             parametrization of the parameters.
+        spectral_parametrization: 是否使用参数的频谱参数化。
     """
 
     def __init__(self, rank,
-                 filters,
+                 filters,   # filters: 整数，输出空间的维度，
                  kernel_size,
                  strides=1,
                  padding='valid',
@@ -140,58 +201,59 @@ class ComplexConv(Layer):
                  epsilon=1e-7,
                  **kwargs):
         super(ComplexConv, self).__init__(**kwargs)
-        self.rank = rank
-        self.filters = filters
-        self.kernel_size = conv_utils.normalize_tuple(kernel_size, rank, 'kernel_size')
-        self.strides = conv_utils.normalize_tuple(strides, rank, 'strides')
-        self.padding = conv_utils.normalize_padding(padding)
-        self.data_format = 'channels_last' if rank == 1 else conv_utils.normalize_data_format(data_format)
-        self.dilation_rate = conv_utils.normalize_tuple(dilation_rate, rank, 'dilation_rate')
-        self.activation = activations.get(activation)
-        self.use_bias = use_bias
-        self.normalize_weight = normalize_weight
-        self.init_criterion = init_criterion
-        self.spectral_parametrization = spectral_parametrization
-        self.epsilon = epsilon
-        self.kernel_initializer = sanitizedInitGet(kernel_initializer)
-        self.bias_initializer = sanitizedInitGet(bias_initializer)
-        self.gamma_diag_initializer = sanitizedInitGet(gamma_diag_initializer)
-        self.gamma_off_initializer = sanitizedInitGet(gamma_off_initializer)
-        self.kernel_regularizer = regularizers.get(kernel_regularizer)
-        self.bias_regularizer = regularizers.get(bias_regularizer)
-        self.gamma_diag_regularizer = regularizers.get(gamma_diag_regularizer)
-        self.gamma_off_regularizer = regularizers.get(gamma_off_regularizer)
-        self.activity_regularizer = regularizers.get(activity_regularizer)
-        self.kernel_constraint = constraints.get(kernel_constraint)
-        self.bias_constraint = constraints.get(bias_constraint)
-        self.gamma_diag_constraint = constraints.get(gamma_diag_constraint)
-        self.gamma_off_constraint = constraints.get(gamma_off_constraint)
-        if seed is None:
-            self.seed = np.random.randint(1, 10e6)
-        else:
-            self.seed = seed
-        self.input_spec = InputSpec(ndim=self.rank + 2)
+        self.rank = rank   # rank: 一个整数，卷积的秩，例如，"2" 表示二维卷积。
+        self.filters = filters   # filters: 整数，输出空间的维度，
+        self.kernel_size = conv_utils.normalize_tuple(kernel_size, rank, 'kernel_size')   # 卷积窗口的维度
+        self.strides = conv_utils.normalize_tuple(strides, rank, 'strides')   # 卷积的步幅
+        self.padding = conv_utils.normalize_padding(padding)   # 填充方式
+        self.data_format = 'channels_last' if rank == 1 else conv_utils.normalize_data_format(data_format)   # 数据格式
+        self.dilation_rate = conv_utils.normalize_tuple(dilation_rate, rank, 'dilation_rate')   # 膨胀率
+        self.activation = activations.get(activation)   # 激活函数
+        self.use_bias = use_bias   # 是否使用偏置
+        self.normalize_weight = normalize_weight   # 是否对权重进行初始化
+        self.init_criterion = init_criterion    # 初始化准则
+        self.spectral_parametrization = spectral_parametrization   # 是否使用频谱参数化
+        self.epsilon = epsilon   # 用于数值稳定性
+        self.kernel_initializer = sanitizedInitGet(kernel_initializer)   # 内核权重矩阵的初始化器
+        self.bias_initializer = sanitizedInitGet(bias_initializer)   # 偏置向量的初始化器
+        self.gamma_diag_initializer = sanitizedInitGet(gamma_diag_initializer)   # gamma 对角线的初始化器
+        self.gamma_off_initializer = sanitizedInitGet(gamma_off_initializer)   # gamma 非对角线的初始化器
+        self.kernel_regularizer = regularizers.get(kernel_regularizer)   # 内核权重矩阵的正则化器
+        self.bias_regularizer = regularizers.get(bias_regularizer)   # 偏置向量的正则化器
+        self.gamma_diag_regularizer = regularizers.get(gamma_diag_regularizer)   # gamma 对角线的正则化器
+        self.gamma_off_regularizer = regularizers.get(gamma_off_regularizer)   # gammma 非对角线的正则化器
+        self.activity_regularizer = regularizers.get(activity_regularizer)   # 输出的正则化器
+        self.kernel_constraint = constraints.get(kernel_constraint)   # 内核矩阵的约束函数
+        self.bias_constraint = constraints.get(bias_constraint)   # 偏置向量的约束函数
+        self.gamma_diag_constraint = constraints.get(gamma_diag_constraint)   # gamma 对角线的约束函数
+        self.gamma_off_constraint = constraints.get(gamma_off_constraint)   # gamma 非对角线的约束函数
 
-    def build(self, input_shape):
+			 
+        if seed is None:    # 如果未提供随机种子
+            self.seed = np.random.randint(1, 10e6)   # 生成一个位于1到10e6（即1000000）之间的随机整数作为种子
+        else:   # 如果提供了随机种子
+            self.seed = seed   # 直接使用提供的种子
+        self.input_spec = InputSpec(ndim=self.rank + 2)   # 设置输入规范，ndim 表示输入的维度，为卷积层的维度加上2
 
-        if self.data_format == 'channels_first':
-            channel_axis = 1
+     def build(self, input_shape):
+        # 确定通道轴的位置
+        if self.data_format == 'channels_first':  # 如果数据格式为'channels_first'
+            channel_axis = 1  # 通道轴在第二个位置
         else:
-            channel_axis = -1
+            channel_axis = -1  # 通道轴在最后一个位置
+        # 检查输入形状是否已定义
         if input_shape[channel_axis] is None:
             raise ValueError('The channel dimension of the inputs '
                              'should be defined. Found `None`.')
+        # 计算输入维度
         input_dim = input_shape[channel_axis] // 2
-        self.kernel_shape = self.kernel_size + (input_dim , self.filters)
-        # The kernel shape here is a complex kernel shape:
-        #   nb of complex feature maps = input_dim;
-        #   nb of output complex feature maps = self.filters;
-        #   imaginary kernel size = real kernel size 
-        #                         = self.kernel_size 
-        #                         = complex kernel size
+        # 计算卷积核的形状
+        self.kernel_shape = self.kernel_size + (input_dim, self.filters)
+        # 如果初始化器为复数或独立复数初始化器
         if self.kernel_initializer in {'complex', 'complex_independent'}:
-            kls = {'complex':             ComplexInit,
-                   'complex_independent': ComplexIndependentFilters}[self.kernel_initializer]
+            # 选择相应的初始化器类
+            kls = {'complex': ComplexInit, 'complex_independent': ComplexIndependentFilters}[self.kernel_initializer]
+            # 初始化卷积核
             kern_init = kls(
                 kernel_size=self.kernel_size,
                 input_dim=input_dim,
@@ -199,9 +261,9 @@ class ComplexConv(Layer):
                 nb_filters=self.filters,
                 criterion=self.init_criterion
             )
-        else:
-            kern_init = self.kernel_initializer
-        
+        else:  # 如果不是复数或独立复数初始化器
+            kern_init = self.kernel_initializer  # 使用指定的初始化器
+        # 添加权重（卷积核）
         self.kernel = self.add_weight(
             self.kernel_shape,
             initializer=kern_init,
@@ -209,9 +271,10 @@ class ComplexConv(Layer):
             regularizer=self.kernel_regularizer,
             constraint=self.kernel_constraint
         )
-
+        # 如果需要对权重进行归一化
         if self.normalize_weight:
             gamma_shape = (input_dim * self.filters,)
+            # 添加 gamma 对角线权重
             self.gamma_rr = self.add_weight(
                 shape=gamma_shape,
                 name='gamma_rr',
@@ -219,6 +282,7 @@ class ComplexConv(Layer):
                 regularizer=self.gamma_diag_regularizer,
                 constraint=self.gamma_diag_constraint
             )
+            # 添加 gamma 对角线权重
             self.gamma_ii = self.add_weight(
                 shape=gamma_shape,
                 name='gamma_ii',
@@ -226,6 +290,7 @@ class ComplexConv(Layer):
                 regularizer=self.gamma_diag_regularizer,
                 constraint=self.gamma_diag_constraint
             )
+            # 添加 gamma 非对角线权重
             self.gamma_ri = self.add_weight(
                 shape=gamma_shape,
                 name='gamma_ri',
@@ -233,13 +298,14 @@ class ComplexConv(Layer):
                 regularizer=self.gamma_off_regularizer,
                 constraint=self.gamma_off_constraint
             )
-        else:
+        else:  # 如果不需要对权重进行归一化
             self.gamma_rr = None
             self.gamma_ii = None
             self.gamma_ri = None
-
+        # 如果使用偏置
         if self.use_bias:
             bias_shape = (2 * self.filters,)
+            # 添加偏置
             self.bias = self.add_weight(
                 bias_shape,
                 initializer=self.bias_initializer,
@@ -247,128 +313,92 @@ class ComplexConv(Layer):
                 regularizer=self.bias_regularizer,
                 constraint=self.bias_constraint
             )
-
-        else:
+        else:  # 如果不使用偏置
             self.bias = None
-
-        # Set input spec.
-        self.input_spec = InputSpec(ndim=self.rank + 2,
-                                    axes={channel_axis: input_dim * 2})
+        # 设置输入规范
+        self.input_spec = InputSpec(ndim=self.rank + 2, axes={channel_axis: input_dim * 2})
+        # 标记模型已构建完成
         self.built = True
 
-    def call(self, inputs):
-        channel_axis = 1 if self.data_format == 'channels_first' else -1
-        input_dim    = K.shape(inputs)[channel_axis] // 2
+
+   def call(self, inputs):
+    # 确定通道轴的位置
+    channel_axis = 1 if self.data_format == 'channels_first' else -1
+    # 计算输入数据的通道数（除以2是因为输入是复数信号，每个通道有实部和虚部）
+    input_dim = K.shape(inputs)[channel_axis] // 2
+    
+    # 根据卷积的rank不同，从卷积核中提取实部和虚部
+	"""
+ 	如果卷积的rank为1（一维卷积），则self.kernel的形状为 (kernel_size, input_dim * 2, filters * 2)，其中kernel_size表示卷积核的大小，input_dim表示输入信号的维度，filters表示输出的特征图数量。
+ 	如果卷积的rank为1（一维卷积），则复数卷积核的实部和虚部从self.kernel中提取的方式为：
+		实部 (f_real)：取所有行、所有列、前filters个通道的部分。
+		虚部 (f_imag)：取所有行、所有列、从第filters个通道到最后的部分。
+
+  	如果卷积的rank为2（二维卷积），则self.kernel的形状为 (kernel_size[0], kernel_size[1], input_dim * 2, filters * 2)。在这种情况下，f_real和f_imag同样表示复数卷积核的实部和虚部。
+	如果卷积的rank为2（二维卷积），则复数卷积核的实部和虚部从self.kernel中提取的方式为：
+		实部 (f_real)：取所有行、所有列、所有深度、前filters个通道的部分。
+		虚部 (f_imag)：取所有行、所有列、所有深度、从第filters个通道到最后的部分。
+
+  	如果卷积的rank为3（三维卷积），则self.kernel的形状为 (kernel_size[0], kernel_size[1], kernel_size[2], input_dim * 2, filters * 2)。在这种情况下，f_real和f_imag同样表示复数卷积核的实部和虚部。
+	如果卷积的rank为3（三维卷积），则复数卷积核的实部和虚部从self.kernel中提取的方式为：
+		实部 (f_real)：取所有行、所有列、所有深度、所有通道、前filters个通道的部分。
+		虚部 (f_imag)：取所有行、所有列、所有深度、所有通道、从第filters个通道到最后的部分。
+ 	"""
+    if self.rank == 1:
+        f_real = self.kernel[:, :, :self.filters]
+        f_imag = self.kernel[:, :, self.filters:]
+    elif self.rank == 2:
+        f_real = self.kernel[:, :, :, :self.filters]
+        f_imag = self.kernel[:, :, :, self.filters:]
+    elif self.rank == 3:
+        f_real = self.kernel[:, :, :, :, :self.filters]
+        f_imag = self.kernel[:, :, :, :, self.filters:]
+    
+    # 构建卷积参数， convArgs 是一个字典，用于存储卷积操作的参数配置
+    convArgs = {
+        "strides": self.strides[0] if self.rank == 1 else self.strides,
+        "padding": self.padding,
+        "data_format": self.data_format,
+        "dilation_rate": self.dilation_rate[0] if self.rank == 1 else self.dilation_rate
+    }
+    """
+    创建了一个字典 convFunc，其中键是卷积的维度（1、2 或 3），对应的值是 Keras 中对应维度的卷积函数。
+    根据当前卷积层的 rank 属性的值，选择相应维度的卷积函数，并将其赋值给 convFunc 变量，以便后续在调用卷积操作时使用。
+    """
+    convFunc = {1: K.conv1d, 2: K.conv2d, 3: K.conv3d}[self.rank]  # 根据rank选择卷积函数
+
+    # 如果假设权重是在频谱域中表示的，则对其进行处理
+    if self.spectral_parametrization:
         if self.rank == 1:
-            f_real   = self.kernel[:, :, :self.filters]
-            f_imag   = self.kernel[:, :, self.filters:]
+            # 处理一维卷积核
         elif self.rank == 2:
-            f_real   = self.kernel[:, :, :, :self.filters]
-            f_imag   = self.kernel[:, :, :, self.filters:]
+            # 处理二维卷积核
         elif self.rank == 3:
-            f_real   = self.kernel[:, :, :, :, :self.filters]
-            f_imag   = self.kernel[:, :, :, :, self.filters:]
+            # 处理三维卷积核
 
-        convArgs = {"strides":       self.strides[0]       if self.rank == 1 else self.strides,
-                    "padding":       self.padding,
-                    "data_format":   self.data_format,
-                    "dilation_rate": self.dilation_rate[0] if self.rank == 1 else self.dilation_rate}
-        convFunc = {1: K.conv1d,
-                    2: K.conv2d,
-                    3: K.conv3d}[self.rank]
+    # 如果进行权重归一化，则对实部和虚部进行归一化
+    if self.normalize_weight:
+        # 计算归一化的权重
+        
+    # 执行复数卷积
+    f_real._keras_shape = self.kernel_shape
+    f_imag._keras_shape = self.kernel_shape
+    cat_kernels_4_real = K.concatenate([f_real, -f_imag], axis=-2)
+    cat_kernels_4_imag = K.concatenate([f_imag, f_real], axis=-2)
+    cat_kernels_4_complex = K.concatenate([cat_kernels_4_real, cat_kernels_4_imag], axis=-1)
+    cat_kernels_4_complex._keras_shape = self.kernel_size + (2 * input_dim, 2 * self.filters)
+    output = convFunc(inputs, cat_kernels_4_complex, **convArgs)  # 执行卷积操作
 
-        # processing if the weights are assumed to be represented in the spectral domain
+    # 如果使用偏置，则添加偏置
+    if self.use_bias:
+        output = K.bias_add(output, self.bias, data_format=self.data_format)
 
-        if self.spectral_parametrization:
-            if   self.rank == 1:
-                f_real = K.permute_dimensions(f_real, (2,1,0))
-                f_imag = K.permute_dimensions(f_imag, (2,1,0))
-                f      = K.concatenate([f_real, f_imag], axis=0)
-                fshape = K.shape(f)
-                f      = K.reshape(f, (fshape[0] * fshape[1], fshape[2]))
-                f      = ifft(f)
-                f      = K.reshape(f, fshape)
-                f_real = f[:fshape[0]//2]
-                f_imag = f[fshape[0]//2:]
-                f_real = K.permute_dimensions(f_real, (2,1,0))
-                f_imag = K.permute_dimensions(f_imag, (2,1,0))
-            elif self.rank == 2:
-                f_real = K.permute_dimensions(f_real, (3,2,0,1))
-                f_imag = K.permute_dimensions(f_imag, (3,2,0,1))
-                f      = K.concatenate([f_real, f_imag], axis=0)
-                fshape = K.shape(f)
-                f      = K.reshape(f, (fshape[0] * fshape[1], fshape[2], fshape[3]))
-                f      = ifft2(f)
-                f      = K.reshape(f, fshape)
-                f_real = f[:fshape[0]//2]
-                f_imag = f[fshape[0]//2:]
-                f_real = K.permute_dimensions(f_real, (2,3,1,0))
-                f_imag = K.permute_dimensions(f_imag, (2,3,1,0))
+    # 如果指定了激活函数，则应用激活函数
+    if self.activation is not None:
+        output = self.activation(output)
 
-        # In case of weight normalization, real and imaginary weights are normalized
+    return output
 
-        if self.normalize_weight:
-            ker_shape = self.kernel_shape
-            nb_kernels = ker_shape[-2] * ker_shape[-1]
-            kernel_shape_4_norm = (np.prod(self.kernel_size), nb_kernels)
-            reshaped_f_real = K.reshape(f_real, kernel_shape_4_norm)
-            reshaped_f_imag = K.reshape(f_imag, kernel_shape_4_norm)
-            reduction_axes = list(range(2))
-            del reduction_axes[-1]
-            mu_real = K.mean(reshaped_f_real, axis=reduction_axes)
-            mu_imag = K.mean(reshaped_f_imag, axis=reduction_axes)
-
-            broadcast_mu_shape = [1] * 2
-            broadcast_mu_shape[-1] = nb_kernels
-            broadcast_mu_real = K.reshape(mu_real, broadcast_mu_shape)
-            broadcast_mu_imag = K.reshape(mu_imag, broadcast_mu_shape)
-            reshaped_f_real_centred = reshaped_f_real - broadcast_mu_real
-            reshaped_f_imag_centred = reshaped_f_imag - broadcast_mu_imag
-            Vrr = K.mean(reshaped_f_real_centred ** 2, axis=reduction_axes) + self.epsilon
-            Vii = K.mean(reshaped_f_imag_centred ** 2, axis=reduction_axes) + self.epsilon
-            Vri = K.mean(reshaped_f_real_centred * reshaped_f_imag_centred,
-                         axis=reduction_axes) + self.epsilon
-            
-            normalized_weight = complex_normalization(
-                K.concatenate([reshaped_f_real, reshaped_f_imag], axis=-1),
-                Vrr, Vii, Vri,
-                beta = None,
-                gamma_rr = self.gamma_rr,
-                gamma_ri = self.gamma_ri,
-                gamma_ii = self.gamma_ii,
-                scale=True,
-                center=False,
-                axis=-1
-            )
-
-            normalized_real = normalized_weight[:, :nb_kernels]
-            normalized_imag = normalized_weight[:, nb_kernels:]
-            f_real = K.reshape(normalized_real, self.kernel_shape)
-            f_imag = K.reshape(normalized_imag, self.kernel_shape)
-
-        # Performing complex convolution
-
-        f_real._keras_shape = self.kernel_shape
-        f_imag._keras_shape = self.kernel_shape
-
-        cat_kernels_4_real = K.concatenate([f_real, -f_imag], axis=-2)
-        cat_kernels_4_imag = K.concatenate([f_imag,  f_real], axis=-2)
-        cat_kernels_4_complex = K.concatenate([cat_kernels_4_real, cat_kernels_4_imag], axis=-1)
-        cat_kernels_4_complex._keras_shape = self.kernel_size + (2 * input_dim, 2 * self.filters)
-
-        output = convFunc(inputs, cat_kernels_4_complex, **convArgs)
-
-        if self.use_bias:
-            output = K.bias_add(
-                output,
-                self.bias,
-                data_format=self.data_format
-            )
-
-        if self.activation is not None:
-            output = self.activation(output)
-
-        return output
 
     def compute_output_shape(self, input_shape):
         if self.data_format == 'channels_last':
