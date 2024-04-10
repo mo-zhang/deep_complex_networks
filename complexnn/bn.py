@@ -15,63 +15,56 @@ from keras import initializers, regularizers, constraints
 import keras.backend as K
 
 
+# 定义一个自定义初始化函数，用于初始化权重
 def sqrt_init(shape, dtype=None):
+    # 计算初始化值，这里使用了1/sqrt(2)，并将结果转换为Keras张量
     value = (1 / K.sqrt(2)) * K.ones(shape)
     return value
 
-
+# 定义一个函数，用于根据初始化函数名称获取相应的初始化函数
 def sanitizedInitGet(init):
+    # 如果传入的初始化函数是 "sqrt_init"，则返回自定义的 sqrt_init 函数
     if init in ["sqrt_init"]:
         return sqrt_init
+    # 否则，返回 Keras 内置的初始化函数
     else:
         return initializers.get(init)
+
+# 定义一个函数，用于将初始化函数序列化为字符串表示形式
 def sanitizedInitSer(init):
+    # 如果初始化函数是 sqrt_init，则返回对应的字符串 "sqrt_init"
     if init in [sqrt_init]:
         return "sqrt_init"
+    # 否则，调用 Keras 内置的初始化函数的序列化方法进行序列化
     else:
         return initializers.serialize(init)
 
 
-
 def complex_standardization(input_centred, Vrr, Vii, Vri,
                             layernorm=False, axis=-1):
-    
+    # 获取输入张量的维度
     ndim = K.ndim(input_centred)
+    # 获取输入张量的轴上的维度大小
     input_dim = K.shape(input_centred)[axis] // 2
+    # 创建用于广播的形状列表
     variances_broadcast = [1] * ndim
+    # 将输入轴的大小设置为输入维度的一半
     variances_broadcast[axis] = input_dim
+    # 如果进行层归一化，将第一个维度设置为批次大小
     if layernorm:
         variances_broadcast[0] = K.shape(input_centred)[0]
-
     # We require the covariance matrix's inverse square root. That first requires
     # square rooting, followed by inversion (I do this in that order because during
     # the computation of square root we compute the determinant we'll need for
     # inversion as well).
 
-    # tau = Vrr + Vii = Trace. Guaranteed >= 0 because SPD
-    tau = Vrr + Vii
-    # delta = (Vrr * Vii) - (Vri ** 2) = Determinant. Guaranteed >= 0 because SPD
-    delta = (Vrr * Vii) - (Vri ** 2)
+    # 计算协方差矩阵的逆平方根
+    tau = Vrr + Vii  # 协方差矩阵的迹
+    delta = (Vrr * Vii) - (Vri ** 2)  # 协方差矩阵的行列式
+    s = np.sqrt(delta)  # 方根矩阵的行列式
+    t = np.sqrt(tau + 2 * s)  # 方根矩阵的迹
 
-    s = np.sqrt(delta) # Determinant of square root matrix
-    t = np.sqrt(tau + 2 * s)
-
-    # The square root matrix could now be explicitly formed as
-    #       [ Vrr+s Vri   ]
-    # (1/t) [ Vir   Vii+s ]
-    # https://en.wikipedia.org/wiki/Square_root_of_a_2_by_2_matrix
-    # but we don't need to do this immediately since we can also simultaneously
-    # invert. We can do this because we've already computed the determinant of
-    # the square root matrix, and can thus invert it using the analytical
-    # solution for 2x2 matrices
-    #      [ A B ]             [  D  -B ]
-    # inv( [ C D ] ) = (1/det) [ -C   A ]
-    # http://mathworld.wolfram.com/MatrixInverse.html
-    # Thus giving us
-    #           [  Vii+s  -Vri   ]
-    # (1/s)(1/t)[ -Vir     Vrr+s ]
-    # So we proceed as follows:
-
+    # 计算逆平方根矩阵
     inverse_st = 1.0 / (s * t)
     Wrr = (Vii + s) * inverse_st
     Wii = (Vrr + s) * inverse_st
@@ -124,33 +117,28 @@ def complex_standardization(input_centred, Vrr, Vii, Vri,
 def ComplexBN(input_centred, Vrr, Vii, Vri, beta,
                gamma_rr, gamma_ri, gamma_ii, scale=True,
                center=True, layernorm=False, axis=-1):
-
+    # 获取输入张量的维度
     ndim = K.ndim(input_centred)
+    # 获取输入张量的轴上的维度大小
     input_dim = K.shape(input_centred)[axis] // 2
+    # 如果启用了scale操作，计算广播形状
     if scale:
         gamma_broadcast_shape = [1] * ndim
         gamma_broadcast_shape[axis] = input_dim
+    # 如果启用了center操作，计算广播形状
     if center:
         broadcast_beta_shape = [1] * ndim
         broadcast_beta_shape[axis] = input_dim * 2
 
     if scale:
+        # 对输入进行复数标准化
         standardized_output = complex_standardization(
             input_centred, Vrr, Vii, Vri,
             layernorm,
             axis=axis
         )
 
-        # Now we perform th scaling and Shifting of the normalized x using
-        # the scaling parameter
-        #           [  gamma_rr gamma_ri  ]
-        #   Gamma = [  gamma_ri gamma_ii  ]
-        # and the shifting parameter
-        #    Beta = [beta_real beta_imag].T
-        # where:
-        # x_real_BN = gamma_rr * x_real_normed + gamma_ri * x_imag_normed + beta_real
-        # x_imag_BN = gamma_ri * x_real_normed + gamma_ii * x_imag_normed + beta_imag
-        
+        # 进行标准化后的张量的缩放和位移操作
         broadcast_gamma_rr = K.reshape(gamma_rr, gamma_broadcast_shape)
         broadcast_gamma_ri = K.reshape(gamma_ri, gamma_broadcast_shape)
         broadcast_gamma_ii = K.reshape(gamma_ii, gamma_broadcast_shape)
@@ -176,15 +164,19 @@ def ComplexBN(input_centred, Vrr, Vii, Vri, beta,
             )
         rolled_standardized_output = K.concatenate([centred_imag, centred_real], axis=axis)
         if center:
+            # 如果启用了center操作，返回缩放和位移后的结果
             broadcast_beta = K.reshape(beta, broadcast_beta_shape)
             return cat_gamma_4_real * standardized_output + cat_gamma_4_imag * rolled_standardized_output + broadcast_beta
         else:
+            # 如果未启用center操作，返回仅缩放后的结果
             return cat_gamma_4_real * standardized_output + cat_gamma_4_imag * rolled_standardized_output
     else:
         if center:
+            # 如果未启用scale但启用了center操作，返回仅位移后的结果
             broadcast_beta = K.reshape(beta, broadcast_beta_shape)
             return input_centred + broadcast_beta
         else:
+            # 如果未启用scale和center操作，返回原始输入张量
             return input_centred
 
 
